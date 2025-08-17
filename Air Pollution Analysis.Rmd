@@ -1,0 +1,269 @@
+---
+title: "Assessing the Impact of Air Pollution on COPD Cases in New Zealand"
+author: "Nazgul Altynbekova"
+output:
+  github_document: default
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(knitr)
+library(dplyr) 
+```
+
+### 1.
+
+```{r}
+
+NZAir = read.csv(file = "NZAir.csv", header=TRUE)
+
+```
+
+```{r}
+
+nzair.lm <- lm(Cases ~ Pop, data = NZAir)
+
+kable(head(NZAir, 5))
+
+summary(nzair.lm)
+
+```
+
+The intercept (around -0.19 cases) shows how many cases we would have with zero population, but in reality it doesn't make much sense, so it's better to consider it as a theoretical value. Since the slope is positive, it shows how much MORE cases we would have in average when population increases by every 1000 people (around 0.2 more cases every 1000 people, or around1 more case with increase of population by every 5000 ).
+
+#### 95% Confidence interval for the slope.
+
+```{r}
+
+B = 0.219256
+DF = 65
+SE = 0.005238
+uprconf = B + qt(0.025, DF)*SE
+lwrconf = B - qt(0.025, DF)*SE
+uprconf
+lwrconf
+
+confint(nzair.lm)
+
+```
+
+#### Standard diagnostic plots for lm1
+
+```{r}
+
+plot(nzair.lm)
+
+```
+
+Although Resuduals vs Fitted values plot looks quite linear, it definitely lacks of homogeneity of variance, which is seconded by the Scale-Location plot. Normal Q-Q plot demonstrates few pretty extreme outliers having standardized residuals' value far more than ±2, which affects the normality of residuals. Same four extreme points are standing out on Residuals vs Leverage plot with Cook's Distance around level 0.5, 1 and far beyond level 1. We could suggest to remove these data points to look if the normality and data influence would work with the model better, or if we need to transform data to fit the model.
+
+#### Shapiro test on the residuals
+
+```{r}
+
+shapiro.test(nzair.lm$residuals)
+
+```
+
+Shapiro-Wilk test returned a significantly small p-value (1.868e-09) which allows us to reject the null of normality of residuals. This proves the conclusions made from diagnostic plots earlier.
+
+#### A linear regression of Cases on Pop without an intercept.
+
+```{r}
+
+nzair.lm0 = lm(Cases ~ 0 + Pop, NZAir)
+
+summary(nzair.lm)
+summary(nzair.lm0)
+
+```
+
+The p-value stayed the same, which indicates that both models works well. However, the model without an intercept shows a bit of improvement in the summary: Residual standard error got slightly less (from 2.854 to 2.837) and the R-squared increased (from 0.9642 to 0.9733), which means that the model without an intercept explains more variability of Cases (by \~1%).
+
+### 2.
+
+```{r}
+
+NZAir |> 
+  mutate(sqrtCases = sqrt(Cases),
+  sqrtPop = sqrt(Pop),
+  logCases1 = log(Cases + 1),    
+  logPop = log(Pop)) -> NZAir
+
+```
+
+#### Model A
+
+```{r}
+
+nzair.lmA <- lm(sqrtCases ~ 1 + sqrtPop, data = NZAir)
+
+```
+
+```{r}
+
+summary(nzair.lmA)
+
+```
+
+```{r}
+
+par(mfrow=c(2,2))
+plot(nzair.lmA) 
+
+```
+
+Estimating how many cases we would expect for a population the size of Auckland's North Shore (Population = 184812), and calculating a prediction interval.
+
+```{r}
+
+(predict(nzair.lmA, newdata = data.frame(sqrtPop = sqrt(184.812)), interval = "prediction"))^2
+NZAir[35,]
+
+```
+
+The actual number of cases in North Shore is 40, which is quite close to our predicted value (39) and completely falls into prediction interval (from 30 to 49 cases) by this model.
+
+#### Alternative regression Model B
+
+```{r}
+
+nzair.lmB <- lm(logCases1 ~ 1 + logPop, data = NZAir)
+summary(nzair.lmB)
+par(mfrow=c(2,2))
+plot(nzair.lmB) 
+exp(predict(nzair.lmB, newdata = data.frame(logPop = log(184.812)), interval = "prediction")) - 1
+NZAir[35,]
+
+```
+
+**Comparing two models**
+
+Although both models perform well and have the same highly significant p-values (\< 2.2e-16), Model A explains slightly more variability of data than Model B (\~96% vs. \~92%) and has a higher F-statistic, which indicates that the Model A has a better overall fit. On the other hand, Model B has a smaller Residual Standard Error than Model B (0.2879 vs. 0.3603) and resiaduals are more heteroscedastic on diagnostic plots. Both models looks relatively linear on Q-Q Residuals plot and didn't show any points with Cook's Distance more than level 0.5.
+
+Since both models' performance is quite close to each other, we could use a prediction interval's width to compare and decide which one to use. Model A's predicted value was really close to an actual data (39 vs. 40, with prediction width from 30 to 49 cases), whereas Model B suggested a far more vague prediction with a predicted value 29 cases and prediction width from 16 to 53. We may conclude that Model A fits data a bit better and capable of making more accurate predictions than Model B.
+
+#### Visualising the effect of weight by plotting with symbol sizes proportional to Pop
+
+```{r}
+
+plot(nzair.lmA$residuals ~ NZAir$sqrtPop, cex = sqrt(NZAir$Pop/10)) 
+
+plot(nzair.lmB$residuals ~ NZAir$logPop, cex = sqrt(NZAir$Pop/10)) 
+
+```
+
+Both plots showed a decreasing linear patterns of residuals at the left of the graphs, which might indicate of non-linearity of residuals. Model B also has an increasing tail of residuals on the right side with residuals being positive, which is also might be the indication that the model needs to be improved.
+
+### 3.
+
+#### Linear regression with the variable PM10 (the mass of particulate matter ('specks') in the air).
+
+```{r}
+
+nzair.lmC <- lm(sqrtCases ~ 1 + sqrtPop + PM10, data = NZAir)
+summary(nzair.lmC)
+
+```
+
+```{r}
+
+anova(nzair.lmA, nzair.lmC)
+
+```
+
+According to the summary results, the overall p-value of both models is the same and significantly low (\< 2.2e-16), which shows that both models are a good fit in general. However, we certainly may conclude that additional covariate PM10 in the Model C improved the regression comparing to the Model A and the covariate itself is highly significant too (with p-value 1.07e-12).
+
+We have a bigger R-squared in Model C compared to the Model A (0.9829 vs. 0.9619), which shows that that the former model explains more variability of data. Also, Residual Standard Error of Model C is smaller (0.2436 vs. 0.3603), which means that this model's prediction width would be narrower. And lastly, the ANOVA comparison of two models also shows that Model C provides a better fit than model A with significantly low p-value of 1.066e-12.
+
+#### Standardised Residuals against sqrtPop, and Studentized Deleted Residuals against sqrtPop
+
+```{r}
+
+n = length(NZAir$sqrtPop)
+plot(rstudent(nzair.lmC) ~ NZAir$sqrtPop, pch = 3, col = 2, main = "Standardized(o) and Studentized(+) residuals vs sqrtPop")
+points(rstandard(nzair.lmC) ~ NZAir$sqrtPop)
+
+```
+
+We plotted standardized and studentized residuals on the same plot to see if any of deleted residuals had a significant influential leverage and potentially would drug the line towards themselves.
+
+#### 3 locations that have the biggest difference between the Standardized residuals and standardized deleted residuals.
+
+```{r}
+
+cbind(1:n, sort(abs(rstudent(nzair.lmC) - rstandard(nzair.lmC)), decreasing = TRUE))
+NZAir$Location[c(46, 8, 2)]
+
+NZAir.removed <- NZAir[-c(46, 8, 2),]
+nzair.lmC2 <- lm(sqrtCases ~ 1 + sqrtPop + PM10, data = NZAir.removed)
+summary(nzair.lmC2)
+
+```
+
+Even though the difference between Standardized and Studentized residuals of those 3 Locations with maximum difference wasn't that huge and points were located pretty close to each other, Model C2 with those locations removed provides a noticeable improvemet to the regression. R-squared got a bit larger than in Model C (0.9915 vs. 0.9829), Residual Standard Error became a lot smaller (0.1638 vs. 0.2436) and the p-value of covariate PM10 became even smaller (\< 2e-16 vs. 1.07e-12). Model C2 definitely fit the data better comparing to the Model C, therefore I would assume that removing those rows would make sense.
+
+#### Leverages against sqrtPop
+
+```{r}
+
+n = length(NZAir$Cases)
+p = 3
+
+plot(hatvalues(nzair.lmC) ~ NZAir$sqrtPop, pch = "" )
+text(hatvalues(nzair.lmC) ~ NZAir$sqrtPop, labels = NZAir$Location)
+
+```
+
+#### Adding a horizontal reference line for high leverage.
+
+```{r}
+
+n = length(NZAir$Cases)
+p = 3
+
+plot(hatvalues(nzair.lmC) ~ NZAir$sqrtPop, pch = "", main = "Leverages of locations vs. (sqrt)Population")
+text(hatvalues(nzair.lmC) ~ NZAir$sqrtPop, labels = NZAir$Location)
+
+abline(h = (3 * p/n))
+
+```
+
+#### Points with high leverage because of population and Points with high leverage because of PM10
+
+```{r}
+
+n = length(NZAir$Cases)
+p = 3
+
+plot(hatvalues(nzair.lmC) ~ NZAir$PM10, pch = "", main = "Leverages of locations vs. PM10")
+text(hatvalues(nzair.lmC) ~ NZAir$PM10, labels = NZAir$Location)
+abline(h = (3 * p/n))
+
+```
+
+The graph of Leverages vs. Population indicates that leverage is most possibly explained by high values of Population. The second graph indicates that high leverage is also related to PM10, which is why Nelson with average population value has high leverage because of it's extremely high PM10 value. I would assume that leverage depends on both predictors in combination.
+
+#### Added variable plot for Cases vs PM10 after adjusting each variable for Pop
+
+```{r}
+
+e = lm(sqrtCases ~ sqrtPop, data = NZAir)$residuals
+f = lm(PM10 ~ sqrtPop, data = NZAir)$residuals
+plot(e ~ f, main = "Partial Regression Plot for Cases vs PM10, adjusted for Population")
+lines(lowess(e ~ f))
+summary(lm(e ~ f))
+
+```
+
+We observe a quite strong increasing trend with a few outliers, which seem to not deform the regression. The line appears to be slightly curved, but we can say that there's a straight line relationship of Cases on the effect of PM10
+
+```{r}
+
+summary(lm(e ~ f))$r.squared
+
+```
+
+The additional variable PM10 have explained about 54.9% of the previously unexplained variation. That is an additional 2.1% out of 3.8% that was left after the Cases vs. sqrtPop model.
