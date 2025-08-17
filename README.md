@@ -27,4 +27,4 @@ This project provides a **baseline regression** of COPD (chronic obstructive pul
 - Base R plotting & diagnostics
 
 ## 📄 Full Analysis (Code + Plots)
-See the complete knitted report here: **[Air-Pollution-Analysis.md](analysis.md)**.  
+See the complete knitted report here: **[analysis.md](Air-Pollution-Analysis.md)**.  
